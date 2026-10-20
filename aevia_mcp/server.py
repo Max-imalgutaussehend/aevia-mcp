@@ -8,6 +8,7 @@ then sends `Authorization: Bearer <token>` with every call. Each token is checke
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 
@@ -24,6 +25,8 @@ from .gateway import Gateway, Notify
 from .k8s import Kube
 from .observability import Observability
 from .vault import Vault
+
+logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs (log queries, vault paths) stay out of the pod log
 
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "https://mcp.maxrommel.de").rstrip("/")
 OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "https://authentik.maxrommel.de/application/o/aevia-mcp/")
