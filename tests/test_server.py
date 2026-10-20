@@ -25,7 +25,7 @@ class Introspect(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         body = self.rfile.read(int(self.headers["Content-Length"])).decode()
         good = "token=good" in body and self.headers.get("Authorization", "").startswith("Basic ")
-        out = json.dumps({"active": good, "client_id": "obsidian-mcp"} if good else {"active": False}).encode()
+        out = json.dumps({"active": good, "client_id": "aevia-mcp"} if good else {"active": False}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -50,7 +50,7 @@ def test_end_to_end():
         threading.Thread(target=stub.serve_forever, daemon=True).start()
         env = {**os.environ, "VAULT_DIR": str(vault.root), "EXCLUDE_DIRS": "Privat", "PUBLIC_URL": "http://127.0.0.1",
                "OIDC_INTROSPECT_URL": f"http://127.0.0.1:{stub_port}/introspect", "OIDC_CLIENT_SECRET": "s3cret", "SYNC_SECONDS": "3600"}
-        proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "mcp_obsidian.server:app", "--port", str(port)], env=env,
+        proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "aevia_mcp.server:app", "--port", str(port)], env=env,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             c = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10)
@@ -62,7 +62,7 @@ def test_end_to_end():
                     time.sleep(0.2)
             assert c.get("/healthz").text == "ok"
             meta = c.get("/.well-known/oauth-protected-resource").json()
-            assert meta["authorization_servers"][0].endswith("/application/o/obsidian-mcp/")
+            assert meta["authorization_servers"][0].endswith("/application/o/aevia-mcp/")
 
             r = rpc(c, None, "initialize")
             assert r.status_code == 401 and "resource_metadata" in r.headers["www-authenticate"]
@@ -71,7 +71,7 @@ def test_end_to_end():
             init = {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}
             assert rpc(c, "good", "initialize", init).status_code == 200
             tools = rpc(c, "good", "tools/list", id_=2).json()["result"]["tools"]
-            assert {t["name"] for t in tools} >= {"search_notes", "read_note", "vault_overview"}
+            assert {t["name"] for t in tools} >= {"search_notes", "read_note", "vault_overview", "aevia_overview", "pod_logs", "prometheus_query", "ntfy_send"}
             res = rpc(c, "good", "tools/call", {"name": "search_notes", "arguments": {"query": "bayes"}}, 3).json()["result"]
             text = json.dumps(res)
             assert "Uni/Stats.md" in text and "Secret" not in text

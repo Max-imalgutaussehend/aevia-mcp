@@ -32,5 +32,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/max-imalgutaussehend/mcp-obsidian:${{ github.sha }}
+          tags: ghcr.io/max-imalgutaussehend/aevia-mcp:${{ github.sha }}
       - run: echo "digest ${{ steps.push.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"

@@ -5,8 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY mcp_obsidian ./mcp_obsidian
+COPY aevia_mcp ./aevia_mcp
 ENV HOME=/home/mcp PYTHONUNBUFFERED=1 VAULT_DIR=/data/vault
 USER 10001:10001
 EXPOSE 8000
-CMD ["python", "-m", "uvicorn", "mcp_obsidian.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "aevia_mcp.server:app", "--host", "0.0.0.0", "--port", "8000"]

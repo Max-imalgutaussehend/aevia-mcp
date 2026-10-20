@@ -2,7 +2,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from mcp_obsidian.vault import Vault
+from aevia_mcp.vault import Vault
 
 
 def make_vault(tmp: str) -> Vault:
