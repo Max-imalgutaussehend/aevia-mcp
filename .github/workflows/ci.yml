@@ -1,0 +1,36 @@
+# Tests on every push; on main also build and push the image. Publishing is not deploying: the Aevia platform pins the digest.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests
+  image:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: docker/build-push-action@v6
+        id: push
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/max-imalgutaussehend/mcp-obsidian:${{ github.sha }}
+      - run: echo "digest ${{ steps.push.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
