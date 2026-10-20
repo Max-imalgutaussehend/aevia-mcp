@@ -47,12 +47,14 @@ class Vault:
                 if (self.root / ".git").exists():
                     try:
                         self._git("rev-parse", "--verify", "HEAD")
-                        self._git("pull", "--ff-only", "--quiet")
+                        has_commits = True
+                    except RuntimeError:
+                        has_commits = False
+                        shutil.rmtree(self.root, ignore_errors=True)  # only an empty clone (nothing pushed yet) is thrown away
+                    if has_commits:
+                        self._git("pull", "--ff-only", "--quiet")  # a failing pull keeps the data and is reported in the overview
                         self.last_sync, self.last_error = time.time(), None
                         return
-                    except RuntimeError:
-                        # an empty clone (the vault was not pushed yet) or a broken one: start over
-                        shutil.rmtree(self.root, ignore_errors=True)
                 if not self.remote:
                     raise RuntimeError("no remote configured")
                 self.root.parent.mkdir(parents=True, exist_ok=True)
