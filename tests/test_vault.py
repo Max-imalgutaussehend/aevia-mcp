@@ -47,3 +47,18 @@ def test_backlinks_tags_recent():
         assert v.by_tag("math/stats") == ["Uni/Stats.md"]
         assert {r["path"] for r in v.recent()} == {"00 Home.md", "Uni/Stats.md"}
         assert v.overview()["notes"] == 2
+
+
+def test_sync_recovers_from_an_empty_remote():
+    with tempfile.TemporaryDirectory() as tmp:
+        bare, work = Path(tmp) / "remote.git", Path(tmp) / "work"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+        v = Vault(Path(tmp) / "clone", exclude=[], remote=str(bare))
+        v.sync()
+        assert v.last_error is None and v.notes() == []          # empty repository: clone works, nothing to read yet
+        subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True)
+        (work / "Home.md").write_text("hello #x\n")
+        for cmd in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first"], ["push", "-q", "origin", "HEAD:main"]):
+            subprocess.run(["git", *cmd], cwd=work, check=True)
+        v.sync()
+        assert v.last_error is None and [str(p) for p in v.notes()] == ["Home.md"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -43,13 +44,19 @@ class Vault:
         """Clone on first use, fast-forward afterwards. Errors are kept for the overview instead of raised."""
         with self._lock:
             try:
-                if not (self.root / ".git").exists():
-                    if not self.remote:
-                        raise RuntimeError("no remote configured")
-                    self.root.parent.mkdir(parents=True, exist_ok=True)
-                    self._git("clone", "--depth", "50", self.remote, str(self.root), cwd=self.root.parent)
-                else:
-                    self._git("pull", "--ff-only", "--quiet")
+                if (self.root / ".git").exists():
+                    try:
+                        self._git("rev-parse", "--verify", "HEAD")
+                        self._git("pull", "--ff-only", "--quiet")
+                        self.last_sync, self.last_error = time.time(), None
+                        return
+                    except RuntimeError:
+                        # an empty clone (the vault was not pushed yet) or a broken one: start over
+                        shutil.rmtree(self.root, ignore_errors=True)
+                if not self.remote:
+                    raise RuntimeError("no remote configured")
+                self.root.parent.mkdir(parents=True, exist_ok=True)
+                self._git("clone", "--depth", "50", self.remote, str(self.root), cwd=self.root.parent)
                 self.last_sync, self.last_error = time.time(), None
             except Exception as e:  # noqa: BLE001
                 self.last_error = str(e)
