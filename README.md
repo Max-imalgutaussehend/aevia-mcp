@@ -27,3 +27,10 @@ Tools whose backend is not configured answer with an error instead of failing th
 python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 .venv/bin/python -m pytest -q tests      # unit tests, mocked backends, and an end-to-end test against a stub identity provider
 ```
+
+## n8n workflow builder
+
+With `N8N_MCP_URL` (n8n's `/mcp-server/http`) and `N8N_MCP_TOKEN` set, the tools of n8n's own MCP server are bridged as `n8n_<name>` with n8n's input schemas
+(search nodes, read node types, validate and create workflows from SDK code, update, publish, run and test them). The list is re-read every five minutes; `aevia_overview`
+shows the bridge status. Start a build with `n8n_get_sdk_reference`, `n8n_get_workflow_best_practices` and `n8n_search_nodes`, then `n8n_validate_workflow` before `n8n_create_workflow_from_code`.
+Tests: `tests/test_n8n.py` (fake functions and a real SSE transport against `tests/fake_n8n.py`).
