@@ -62,3 +62,67 @@ def test_sync_recovers_from_an_empty_remote():
             subprocess.run(["git", *cmd], cwd=work, check=True)
         v.sync()
         assert v.last_error is None and [str(p) for p in v.notes()] == ["Home.md"]
+
+
+def _remote_vault(tmp):
+    """A vault that is a clone of a bare remote, like in the cluster."""
+    src = make_vault(tmp)
+    bare = Path(tmp) / "remote.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(src.root), str(bare)], check=True)
+    clone = Path(tmp) / "clone"
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True)
+    return Vault(clone, exclude=["Privat"], remote=str(bare)), bare
+
+
+def test_write_create_append_overwrite_and_push():
+    with tempfile.TemporaryDirectory() as tmp:
+        v, bare = _remote_vault(tmp)
+        r = v.write("Ideen/Neu", "Erste Zeile #idee", "create", "Idee festhalten")
+        assert r["path"] == "Ideen/Neu.md" and r["created"] and r["pushed"]
+        assert (v.root / "Ideen" / "Neu.md").read_text() == "Erste Zeile #idee\n"
+        v.write("Ideen/Neu.md", "Zweite Zeile", "append")
+        assert (v.root / "Ideen" / "Neu.md").read_text() == "Erste Zeile #idee\nZweite Zeile\n"
+        v.write("Ideen/Neu.md", "Ersetzt", "overwrite")
+        log = subprocess.run(["git", "log", "--format=%an|%s", "-3"], cwd=bare, capture_output=True, text=True, check=True).stdout.splitlines()
+        assert log[2] == "Aevia MCP|Idee festhalten" and "update Ideen/Neu.md" in log[0]
+        shown = subprocess.run(["git", "show", "HEAD:Ideen/Neu.md"], cwd=bare, capture_output=True, text=True, check=True).stdout
+        assert shown == "Ersetzt\n"
+        assert v.write("Heute", "x", "append")["created"]  # append to a missing note creates it
+
+
+def test_write_refuses_bad_paths_and_overwriting_create():
+    with tempfile.TemporaryDirectory() as tmp:
+        v, _ = _remote_vault(tmp)
+        for bad in ("../x.md", "a/../../x.md", ".obsidian/x.md", ".git/config", "Privat/Neu.md", "Uni/bild.png", ""):
+            try:
+                v.write(bad, "x")
+                raise AssertionError(bad)
+            except ValueError:
+                pass
+        try:
+            v.write("00 Home.md", "x", "create")
+            raise AssertionError("create must not overwrite")
+        except FileExistsError:
+            pass
+        try:
+            v.write("A.md", "x", "delete")
+            raise AssertionError("mode")
+        except ValueError:
+            pass
+        assert (v.root / "00 Home.md").read_text().startswith("---")
+        assert v.write("/Wurzel/Notiz", "x")["path"] == "Wurzel/Notiz.md"  # a leading slash means vault-relative, never the filesystem root
+
+
+def test_failed_push_leaves_no_trace():
+    with tempfile.TemporaryDirectory() as tmp:
+        v, bare = _remote_vault(tmp)
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=v.root, capture_output=True, text=True, check=True).stdout
+        v.remote = str(Path(tmp) / "gone.git")
+        subprocess.run(["git", "remote", "set-url", "origin", v.remote], cwd=v.root, check=True)
+        try:
+            v.write("Neu.md", "x")
+            raise AssertionError("push should fail")
+        except RuntimeError:
+            pass
+        assert not (v.root / "Neu.md").exists()
+        assert subprocess.run(["git", "rev-parse", "HEAD"], cwd=v.root, capture_output=True, text=True, check=True).stdout == head

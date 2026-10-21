@@ -1,4 +1,4 @@
-"""Read-only access to an Obsidian vault that is a git clone (kept fresh by `git pull`)."""
+"""Access to an Obsidian vault that is a git clone (kept fresh by `git pull`). Reads are free; a write is one git commit that is pushed at once."""
 from __future__ import annotations
 
 import os
@@ -14,6 +14,9 @@ WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 TAG = re.compile(r"(?:(?<=\s)|^)#([A-Za-z][\w/-]*)")
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 MAX_READ = 200_000
+MAX_WRITE = 200_000
+WRITE_MODES = ("create", "append", "overwrite")
+AUTHOR = ["-c", "user.name=Aevia MCP", "-c", "user.email=mcp@aevia.invalid"]
 
 
 @dataclass
@@ -94,6 +97,66 @@ class Vault:
         if self._excluded(rel) or p.suffix.lower() != ".md" or not p.is_file():
             raise FileNotFoundError(rel_path)
         return p
+
+    def _target(self, rel_path: str) -> Path:
+        """Where a note may be written: inside the vault, a .md file, not hidden, not in an excluded folder."""
+        raw = Path(rel_path.strip().lstrip("/"))
+        if not raw.parts or raw.suffix.lower() not in ("", ".md"):
+            raise ValueError("path must be a note (.md) inside the vault")
+        if raw.suffix == "":
+            raw = raw.with_suffix(".md")
+        p = (self.root / raw).resolve()
+        rel = p.relative_to(self.root)  # raises ValueError if it escapes the vault
+        if self._excluded(rel):
+            raise ValueError("this folder is not available")
+        return p
+
+    def write(self, rel_path: str, content: str, mode: str = "create", message: str = "") -> dict:
+        """Create, append to or overwrite one note, commit and push. If the push fails the commit is dropped again, so the vault never diverges."""
+        if mode not in WRITE_MODES:
+            raise ValueError(f"mode must be one of {', '.join(WRITE_MODES)}")
+        if len(content.encode()) > MAX_WRITE:
+            raise ValueError(f"content is larger than {MAX_WRITE // 1000} KB")
+        with self._lock:
+            p = self._target(rel_path)
+            if self.remote:
+                self._git("pull", "--ff-only", "--quiet")
+            rel = str(p.relative_to(self.root))
+            exists = p.exists()
+            if mode == "create" and exists:
+                raise FileExistsError(f"{rel} exists already: use mode append or overwrite")
+            old = p.read_text(errors="replace") if exists else ""
+            if mode == "append" and old:
+                text = old + ("" if old.endswith("\n") else "\n") + content
+            else:
+                text = content
+            if text and not text.endswith("\n"):
+                text += "\n"
+            before = self._git("rev-parse", "HEAD").strip()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+            action = "update" if exists else "add"
+            msg = (message.strip() or f"{action} {rel}")[:200] + "\n\nvia Aevia MCP"
+            try:
+                self._git("add", "--", rel)
+                self._git(*AUTHOR, "commit", "-q", "-m", msg)
+                pushed = False
+                if self.remote:
+                    try:
+                        self._git("push", "-q", "origin", "HEAD")
+                    except RuntimeError:
+                        self._git(*AUTHOR, "pull", "--rebase", "--quiet")
+                        self._git("push", "-q", "origin", "HEAD")
+                    pushed = True
+            except Exception:
+                try:  # leave the clone exactly as the remote has it (or as it was before this call without a remote)
+                    self._git("reset", "--hard", "@{u}" if self.remote else before)
+                except RuntimeError:
+                    pass
+                if not exists:
+                    p.unlink(missing_ok=True)
+                raise
+            return {"path": rel, "mode": mode, "created": not exists, "pushed": pushed, "head": self._git("log", "-1", "--format=%h").strip()}
 
     def read(self, rel_path: str) -> dict:
         p = self._safe(rel_path)

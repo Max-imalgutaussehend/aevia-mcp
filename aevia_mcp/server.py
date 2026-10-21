@@ -43,7 +43,7 @@ vault = Vault(VAULT_DIR, exclude=EXCLUDE, remote=VAULT_REMOTE)
 
 mcp = FastMCP(
     "aevia",
-    instructions=("Aevia platform tools. aevia_overview first for the state of the cluster. Vault tools read Max's Obsidian notes "
+    instructions=("Aevia platform tools. aevia_overview first for the state of the cluster. Vault tools read Max's Obsidian notes and write_note adds to them (a git commit, never a delete) "
                   "(vault_overview, search_notes, read_note). Cluster tools are read-only (pods, events, logs, Argo CD apps). "
                   "prometheus_query and loki_query answer metric and log questions. llm_ask calls the AI gateway; ntfy_send pushes a "
                   "notification to Max's phone. Quote what the tools return; never invent results."),
@@ -53,6 +53,7 @@ mcp = FastMCP(
 )
 kube, obs, gateway, notify = Kube() if os.path.exists("/var/run/secrets/kubernetes.io/serviceaccount/token") else None, Observability(), Gateway(), Notify()
 RO = {"readOnlyHint": True, "openWorldHint": False}
+WRITE = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 
 
 async def _run(fn, *a):
@@ -83,6 +84,17 @@ async def read_note(path: str) -> dict:
         return await _run(vault.read, path)
     except (FileNotFoundError, ValueError):
         return {"error": f"no such note: {path}"}
+
+
+@mcp.tool(annotations=WRITE)
+async def write_note(path: str, content: str, mode: str = "create", message: str = "") -> dict:
+    """Write to the Obsidian vault (one git commit, pushed at once). mode "create" makes a new note and refuses to overwrite, "append" adds the
+    content to the end (or creates the note), "overwrite" replaces the whole note: read it first and keep what should stay. Use Obsidian
+    syntax ([[links]], #tags, frontmatter). Hidden folders and the excluded folder are not available. Notes are never deleted here."""
+    try:
+        return await _run(vault.write, path, content, mode, message)
+    except (ValueError, FileExistsError, RuntimeError) as e:
+        return _err(e)
 
 
 @mcp.tool(annotations=RO)
