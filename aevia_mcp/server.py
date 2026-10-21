@@ -37,9 +37,10 @@ CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")  # static bearer for clients inside the cluster (Jarvis); never accepted from outside
 VAULT_DIR = os.environ.get("VAULT_DIR", "/data/vault")
 VAULT_REMOTE = os.environ.get("VAULT_GIT_URL") or None
-EXCLUDE = [d for d in os.environ.get("EXCLUDE_DIRS", "Privat").split(",") if d.strip()]
+EXCLUDE = [d for d in os.environ.get("EXCLUDE_DIRS", "Privat").split(",") if d.strip()]  # not readable
+WRITE_EXCLUDE = [d for d in os.environ.get("WRITE_EXCLUDE_DIRS", "").split(",") if d.strip()]  # not writable (default: none, so Privat can be written but not read)
 
-vault = Vault(VAULT_DIR, exclude=EXCLUDE, remote=VAULT_REMOTE)
+vault = Vault(VAULT_DIR, exclude=EXCLUDE, remote=VAULT_REMOTE, write_exclude=WRITE_EXCLUDE)
 
 mcp = FastMCP(
     "aevia",
@@ -90,7 +91,7 @@ async def read_note(path: str) -> dict:
 async def write_note(path: str, content: str, mode: str = "create", message: str = "") -> dict:
     """Write to the Obsidian vault (one git commit, pushed at once). mode "create" makes a new note and refuses to overwrite, "append" adds the
     content to the end (or creates the note), "overwrite" replaces the whole note: read it first and keep what should stay. Use Obsidian
-    syntax ([[links]], #tags, frontmatter). Hidden folders and the excluded folder are not available. Notes are never deleted here."""
+    syntax ([[links]], #tags, frontmatter). Hidden folders are not available. The private folder can be written to (append or create) but never read or searched. Notes are never deleted here."""
     try:
         return await _run(vault.write, path, content, mode, message)
     except (ValueError, FileExistsError, RuntimeError) as e:

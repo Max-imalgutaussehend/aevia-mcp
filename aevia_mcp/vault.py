@@ -27,9 +27,10 @@ class Hit:
 
 
 class Vault:
-    def __init__(self, root: str | Path, exclude: list[str] | None = None, remote: str | None = None):
+    def __init__(self, root: str | Path, exclude: list[str] | None = None, remote: str | None = None, write_exclude: list[str] | None = None):
         self.root = Path(root).resolve()  # resolve once: /var vs /private/var on macOS, symlinked mounts in pods
-        self.exclude = {e.strip("/") for e in (exclude or []) if e.strip()}
+        self.exclude = {e.strip("/") for e in (exclude or []) if e.strip()}  # not readable, not searchable
+        self.write_exclude = {e.strip("/") for e in (write_exclude or []) if e.strip()}  # not writable (hidden folders always are)
         self.remote = remote
         self.last_sync: float | None = None
         self.last_error: str | None = None
@@ -74,11 +75,12 @@ class Vault:
         threading.Thread(target=loop, daemon=True, name="vault-sync").start()
 
     # --- files -----------------------------------------------------------------------------------------------
-    def _excluded(self, rel: Path) -> bool:
+    def _excluded(self, rel: Path, folders: set[str] | None = None) -> bool:
         parts = rel.parts
         if any(p.startswith(".") for p in parts):  # .git, .obsidian, .trash
             return True
-        return bool(parts) and parts[0] in self.exclude or "/".join(parts[:1]) in self.exclude
+        folders = self.exclude if folders is None else folders
+        return bool(parts) and parts[0] in folders
 
     def notes(self, folder: str = "") -> list[Path]:
         base = (self.root / folder).resolve()
@@ -107,7 +109,7 @@ class Vault:
             raw = raw.with_suffix(".md")
         p = (self.root / raw).resolve()
         rel = p.relative_to(self.root)  # raises ValueError if it escapes the vault
-        if self._excluded(rel):
+        if self._excluded(rel, self.write_exclude):
             raise ValueError("this folder is not available")
         return p
 

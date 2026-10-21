@@ -93,7 +93,7 @@ def test_write_create_append_overwrite_and_push():
 def test_write_refuses_bad_paths_and_overwriting_create():
     with tempfile.TemporaryDirectory() as tmp:
         v, _ = _remote_vault(tmp)
-        for bad in ("../x.md", "a/../../x.md", ".obsidian/x.md", ".git/config", "Privat/Neu.md", "Uni/bild.png", ""):
+        for bad in ("../x.md", "a/../../x.md", ".obsidian/x.md", ".git/config", "Uni/bild.png", ""):
             try:
                 v.write(bad, "x")
                 raise AssertionError(bad)
@@ -126,3 +126,24 @@ def test_failed_push_leaves_no_trace():
             pass
         assert not (v.root / "Neu.md").exists()
         assert subprocess.run(["git", "rev-parse", "HEAD"], cwd=v.root, capture_output=True, text=True, check=True).stdout == head
+
+
+def test_private_folder_is_writable_but_not_readable_unless_configured():
+    with tempfile.TemporaryDirectory() as tmp:
+        v, _ = _remote_vault(tmp)
+        assert v.write("Privat/Tagebuch", "Heute war gut", "create")["path"] == "Privat/Tagebuch.md"
+        v.write("Privat/Tagebuch", "Noch ein Satz", "append")
+        assert (v.root / "Privat" / "Tagebuch.md").read_text() == "Heute war gut\nNoch ein Satz\n"
+        assert "Privat/Tagebuch.md" not in [str(p) for p in v.notes()]  # still invisible to reads and search
+        assert v.search("Tagebuch") == [] and v.search("gut") == []
+        try:
+            v.read("Privat/Tagebuch.md")
+            raise AssertionError("private notes must stay unreadable")
+        except FileNotFoundError:
+            pass
+        v.write_exclude = {"Privat"}  # the operator can lock writing again
+        try:
+            v.write("Privat/Neu.md", "x")
+            raise AssertionError("write exclude")
+        except ValueError:
+            pass
