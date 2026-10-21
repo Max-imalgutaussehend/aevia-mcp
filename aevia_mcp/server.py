@@ -41,13 +41,17 @@ EXCLUDE = [d for d in os.environ.get("EXCLUDE_DIRS", "Privat").split(",") if d.s
 WRITE_EXCLUDE = [d for d in os.environ.get("WRITE_EXCLUDE_DIRS", "").split(",") if d.strip()]  # not writable (default: none, so Privat can be written but not read)
 
 vault = Vault(VAULT_DIR, exclude=EXCLUDE, remote=VAULT_REMOTE, write_exclude=WRITE_EXCLUDE)
+N8N_MCP_URL = os.environ.get("N8N_MCP_URL", "").rstrip("/")  # n8n's own MCP server (workflow builder), bridged as n8n_* tools
+N8N_MCP_TOKEN = os.environ.get("N8N_MCP_TOKEN", "")
+n8n_bridge = None
 
 mcp = FastMCP(
     "aevia",
     instructions=("Aevia platform tools. aevia_overview first for the state of the cluster. Vault tools read Max's Obsidian notes and write_note adds to them (a git commit, never a delete) "
                   "(vault_overview, search_notes, read_note). Cluster tools are read-only (pods, events, logs, Argo CD apps). "
                   "prometheus_query and loki_query answer metric and log questions. llm_ask calls the AI gateway; ntfy_send pushes a "
-                  "notification to Max's phone. Quote what the tools return; never invent results."),
+                  "notification to Max's phone. Tools starting with n8n_ are n8n's own MCP tools: build, validate, run and test workflows (start with n8n_get_sdk_reference, "
+                  "n8n_get_workflow_best_practices and n8n_search_nodes before writing workflow code). Quote what the tools return; never invent results."),
     stateless_http=True,
     json_response=True,
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),  # remote server; every call is authenticated
@@ -139,7 +143,8 @@ async def aevia_overview() -> dict:
         apps = await kube.argocd_apps()
         bad = [a for a in apps if a["sync"] != "Synced" or a["health"] != "Healthy"]
         return {"nodes": await kube.nodes(), "argocd": {"apps": len(apps), "not_ok": bad},
-                "pods_with_problems": await kube.pods(only_problems=True), "recent_warnings": await kube.events(limit=10)}
+                "pods_with_problems": await kube.pods(only_problems=True), "recent_warnings": await kube.events(limit=10),
+                "n8n_mcp": n8n_bridge.status() if n8n_bridge else "not configured"}
     except Exception as e:  # noqa: BLE001
         return _err(e)
 
@@ -330,3 +335,8 @@ def build_app():
 
 app = build_app()
 vault.start_background_sync(int(os.environ.get("SYNC_SECONDS", "120")))
+if N8N_MCP_URL and N8N_MCP_TOKEN:
+    from .n8n import N8nBridge
+
+    n8n_bridge = N8nBridge(mcp, N8N_MCP_URL, N8N_MCP_TOKEN)
+    n8n_bridge.start_background_sync()
