@@ -213,7 +213,7 @@ async def prometheus_range(query: str, minutes: int = 60, step_seconds: int = 60
 
 @mcp.tool(annotations=RO)
 async def loki_query(logql: str, minutes: int = 30, limit: int = 100) -> dict:
-    """Search logs with LogQL, for example `{namespace="platform"} |= "error"`; newest lines first."""
+    """Search container logs with LogQL, for example `{k8s_namespace_name="platform"} |= "error"`. Labels: k8s_namespace_name, k8s_pod_name, k8s_container_name. Newest lines first."""
     try:
         return await obs.loki_query(logql, minutes, limit)
     except Exception as e:  # noqa: BLE001

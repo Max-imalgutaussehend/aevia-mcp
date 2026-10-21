@@ -62,7 +62,7 @@ def test_k8s_logs_and_argocd():
 def test_prometheus_and_loki():
     def h(req: httpx.Request):
         if req.url.path.startswith("/loki/"):
-            return httpx.Response(200, json={"data": {"result": [{"stream": {"pod": "p"}, "values": [["2", "second"], ["1", "first"]]}]}})
+            return httpx.Response(200, json={"data": {"result": [{"stream": {"k8s_pod_name": "p"}, "values": [["2", "second"], ["1", "first"]]}]}})
         if "/api/v1/query_range" in req.url.path:
             return httpx.Response(200, json={"status": "success", "data": {"resultType": "matrix", "result": [
                 {"metric": {"ns": "a"}, "values": [[1, "1"], [2, "3"]]}]}})
@@ -74,7 +74,8 @@ def test_prometheus_and_loki():
     assert asyncio.run(o.prometheus_query("up"))["series"][0]["value"] == "42"
     r = asyncio.run(o.prometheus_range("up", 10))["series"][0]
     assert (r["first"], r["last"], r["min"], r["max"]) == ("1", "3", 1.0, 3.0)
-    assert [x["line"] for x in asyncio.run(o.loki_query('{a="b"}'))["lines"]] == ["second", "first"]
+    lq = asyncio.run(o.loki_query('{a="b"}'))["lines"]
+    assert [x["line"] for x in lq] == ["second", "first"] and lq[0]["pod"] == "p"
 
 
 def test_gateway_and_notify(monkeypatch):

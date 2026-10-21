@@ -57,6 +57,6 @@ class Observability:
         lines = []
         for stream in r.json()["data"]["result"]:
             for ts, line in stream["values"]:
-                lines.append((int(ts), stream["stream"].get("pod") or stream["stream"].get("app") or "", line[:400]))
+                lines.append((int(ts), stream["stream"].get("k8s_pod_name") or stream["stream"].get("pod") or stream["stream"].get("app") or "", line[:400]))
         lines.sort(reverse=True)
         return {"lines": [{"pod": p, "line": line} for _, p, line in lines[:limit]]}
