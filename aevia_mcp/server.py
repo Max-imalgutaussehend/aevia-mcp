@@ -8,6 +8,7 @@ then sends `Authorization: Bearer <token>` with every call. Each token is checke
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import os
 import time
@@ -33,6 +34,7 @@ OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "https://authentik.maxrommel.de/appl
 INTROSPECT_URL = os.environ.get("OIDC_INTROSPECT_URL", "https://authentik.maxrommel.de/application/o/introspect/")
 CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "aevia-mcp")
 CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
+INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")  # static bearer for clients inside the cluster (Jarvis); never accepted from outside
 VAULT_DIR = os.environ.get("VAULT_DIR", "/data/vault")
 VAULT_REMOTE = os.environ.get("VAULT_GIT_URL") or None
 EXCLUDE = [d for d in os.environ.get("EXCLUDE_DIRS", "Privat").split(",") if d.strip()]
@@ -258,11 +260,19 @@ class OAuthGate(BaseHTTPMiddleware):
             return await call_next(request)
         header = request.headers.get("authorization", "")
         token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+        if self._internal(request, token):
+            return await call_next(request)
         if not token or not await self._valid(token):
             return JSONResponse(
                 {"error": "invalid_token"}, status_code=401,
                 headers={"WWW-Authenticate": f'Bearer resource_metadata="{PUBLIC_URL}/.well-known/oauth-protected-resource"'})
         return await call_next(request)
+
+    @staticmethod
+    def _internal(request: Request, token: str) -> bool:
+        """The static token only works for in-cluster callers: anything that came through Cloudflare carries cf-connecting-ip."""
+        return bool(INTERNAL_TOKEN and token and "cf-connecting-ip" not in request.headers
+                    and hmac.compare_digest(token.encode(), INTERNAL_TOKEN.encode()))
 
     async def _valid(self, token: str) -> bool:
         key = hashlib.sha256(token.encode()).hexdigest()

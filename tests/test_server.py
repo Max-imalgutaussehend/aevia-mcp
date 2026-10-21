@@ -49,7 +49,7 @@ def test_end_to_end():
         stub = HTTPServer(("127.0.0.1", stub_port), Introspect)
         threading.Thread(target=stub.serve_forever, daemon=True).start()
         env = {**os.environ, "VAULT_DIR": str(vault.root), "EXCLUDE_DIRS": "Privat", "PUBLIC_URL": "http://127.0.0.1",
-               "OIDC_INTROSPECT_URL": f"http://127.0.0.1:{stub_port}/introspect", "OIDC_CLIENT_SECRET": "s3cret", "SYNC_SECONDS": "3600"}
+               "OIDC_INTROSPECT_URL": f"http://127.0.0.1:{stub_port}/introspect", "OIDC_CLIENT_SECRET": "s3cret", "SYNC_SECONDS": "3600", "INTERNAL_TOKEN": "cluster-internal-token"}
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "aevia_mcp.server:app", "--port", str(port)], env=env,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
@@ -67,6 +67,14 @@ def test_end_to_end():
             r = rpc(c, None, "initialize")
             assert r.status_code == 401 and "resource_metadata" in r.headers["www-authenticate"]
             assert rpc(c, "bad", "initialize").status_code == 401
+
+            # in-cluster clients (Jarvis) use the static token; through Cloudflare it must not work
+            init0 = {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}
+            assert rpc(c, "cluster-internal-token", "initialize", init0).status_code == 200
+            via_cf = c.post("/mcp", headers={"Authorization": "Bearer cluster-internal-token", "Cf-Connecting-Ip": "203.0.113.9",
+                                             "Accept": "application/json, text/event-stream", "Content-Type": "application/json"},
+                            json={"jsonrpc": "2.0", "id": 9, "method": "initialize", "params": init0})
+            assert via_cf.status_code == 401
 
             init = {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}
             assert rpc(c, "good", "initialize", init).status_code == 200
