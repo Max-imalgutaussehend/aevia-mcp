@@ -51,7 +51,11 @@ mcp = FastMCP(
                   "(vault_overview, search_notes, read_note). Cluster tools are read-only (pods, events, logs, Argo CD apps). "
                   "prometheus_query and loki_query answer metric and log questions. llm_ask calls the AI gateway; ntfy_send pushes a "
                   "notification to Max's phone. Tools starting with n8n_ are n8n's own MCP tools: build, validate, run and test workflows (start with n8n_get_sdk_reference, "
-                  "n8n_get_workflow_best_practices and n8n_search_nodes before writing workflow code). Quote what the tools return; never invent results."),
+                  "n8n_get_workflow_best_practices and n8n_search_nodes before writing workflow code). The n8n editor is https://n8n.maxrommel.de (behind the same sign-in); "
+                  "build and run workflows through the n8n_* tools, no browser needed. From inside n8n the AI gateway is http://freellmapi.platform.svc.cluster.local:3001 "
+                  "(OpenAI wire format: POST /v1/chat/completions, model for example llama-3.1-8b for fast answers or auto), authenticated by the existing n8n credential "
+                  "\"Aevia AI Gateway\" (type httpHeaderAuth, see n8n_list_credentials): attach it with the n8n_update_workflow operation setNodeCredential, credentials cannot be created through MCP. "
+                  "Quote what the tools return; never invent results."),
     stateless_http=True,
     json_response=True,
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),  # remote server; every call is authenticated
